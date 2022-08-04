@@ -83,46 +83,49 @@ class decoder_subroutine(tf.keras.layers.Layer):
         self.output_dim = output_dim
         self.num_heads = num_heads
         self.key_dim = key_dim
+        self.rate = rate
 
         self.mha1 = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=key_dim,attention_axes=(0,1))
         self.mha2 = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=key_dim,attention_axes=(0,1))
 
-        #elf.add1 = tf.keras.layers.Add()
-        #elf.add2 = tf.keras.layers.Add()
-        #elf.add3 = tf.keras.layers.Add()
-
         self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.norm3 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+
 
         self.ff1 = ffn(output_dim)
 
         self.drop1 = tf.keras.layers.Dropout(rate)
-        self.drop2 = tf.keras.layers.Dropout(rate)
-        self.drop3 = tf.keras.layers.Dropout(rate)
+
 
     def call(self,inputs):
         x = self.mha1(inputs,inputs)
         x = self.drop1(x)
         x = self.norm1(x+inputs)
         x = self.ff1(x)
-        x = self.drop2(x)
-        x = self.norm2(x+inputs)
+        x = self.drop1(x)
+        x = self.norm1(x+inputs)
         x = self.mha2(x,x)
-        x = self.norm3(x+inputs)
+        x = self.norm1(x+inputs)
         x = self.mha1(x,x)
         x = self.drop1(x)
         return self.norm1(x+inputs)
 
-        
-input_layer = tf.keras.layers.Input(shape=(data_window,),dtype='float32')
-encoder = encoder_subroutine(data_window,num_heads=moment_entropy-2,key_dim=25,rate=0.2)(input_layer)
-decoder = decoder_subroutine(data_window,num_heads=moment_entropy-2,key_dim=25,rate=0.2)(encoder)
 
-linear_feedforward = ffn(moment_entropy)(decoder)
+num_layers = 2
+input_layer = tf.keras.layers.Input(shape=(data_window,))
+enc_layers = [encoder_subroutine(output_dim=data_window,num_heads=moment_entropy,key_dim=data_window,rate=0.1) for i in range(num_layers)]
+dec_layers = [decoder_subroutine(output_dim=data_window,num_heads=moment_entropy,key_dim=data_window,rate=0.1) for i in range(num_layers)]
+x = input_layer
+for i in range(num_layers):
+    x = enc_layers[i](x)
+for i in range(num_layers):
+    x = dec_layers[i](x)
+x = ffn(data_window)(x)
 
-prediction = tf.keras.layers.Dense(units=1, activation='softmax')(linear_feedforward)
-model = tf.keras.models.Model(inputs=input_layer, outputs=prediction)
+prediction = tf.keras.layers.Dense(units=1, activation='softmax')(x)
+model = tf.keras.models.Model(inputs=input_layer, outputs=prediction, name='model')
+
+
+
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy','mse'])
 model.summary()
 
