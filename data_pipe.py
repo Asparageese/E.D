@@ -4,8 +4,8 @@ from tqdm import tqdm
 from collections import deque
 
 
-input_size = 30
-prediction_entropy = 8
+input_size = 5
+prediction_entropy = 1
 
 data = pd.read_csv("eurusd_minute.csv")
 data = data.drop(columns=['ACh','BCh','Date','Time'])
@@ -38,8 +38,8 @@ data = data['BO'].to_numpy()
 f1 = series_formation(data)
 labels = label_formation(data)
 
-np.save('f1.npy',f1)
-np.save('labels.npy',labels)
+np.save('Attention_playground/f1.npy', f1)
+np.save('Attention_playground/labels.npy', labels)
 
 
 
