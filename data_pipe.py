@@ -1,45 +1,63 @@
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from collections import deque
+from sklearn.preprocessing import scale
+from sklearn.utils import shuffle
 
+# single feature dataset generator
 
-input_size = 5
-prediction_entropy = 1
-
-data = pd.read_csv("eurusd_minute.csv")
-data = data.drop(columns=['ACh','BCh','Date','Time'])
-
-def classify(future,current):
+def classifier(current,future):
     if future > current:
         return 1
     else:
         return 0
 
-#handle single feature associations
-def series_formation(array):
-    series = []
-    for i in tqdm(range(np.size(array))):
-        if (i+input_size+prediction_entropy) == np.size(array):
+# seperate the input sequences into negative and positive motions and mask.
+# feed the separated masked input into two different encoder blocks.
+def principal_decomposition(array):
+    positive=[]
+    negative=[]
+    for i in tqdm(array,desc='princial_seperation'):
+        if i > 0:
+            positive.append(i)
+            negative.append(0.)
+        else:
+            negative.append(i)
+            positive.append(0.)
+    return np.array(positive),np.array(negative)
+
+def window_creation(array):
+    windows = []
+    for i in tqdm(range(np.size(array)),desc='time_series_windows'):
+        if (i+prediction_entropy+input_size) == np.size(array):
             break
-        series.append(array[i:i+input_size])
-    return np.array(series)
+        windows.append(data[i:i+input_size])
+    return np.array(windows)
 
-def label_formation(array):
-    labels = []
-    for i in tqdm(range(np.size(array))):
-        if (i+input_size+prediction_entropy) == np.size(array):
-            break
-        labels.append(classify(array[i+input_size+prediction_entropy],array[i+input_size]))
-    return np.array(labels)
 
-data = data['BO'].to_numpy()
+input_size = 20
+prediction_entropy = 4
 
-f1 = series_formation(data)
-labels = label_formation(data)
+data = pd.read_csv("eurusd_minute.csv")
+data = np.diff(np.diff(data['BO'].to_numpy()))
+data = scale(data,with_std=True)
 
-np.save('Attention_playground/f1.npy', f1)
-np.save('Attention_playground/labels.npy', labels)
+labels = []
+for i in range(np.size(data)):
+    if (i+prediction_entropy+input_size) == np.size(data):
+        break
+    labels.append(classifier(data[i+input_size],data[i+input_size+prediction_entropy]))
+
+p_set,n_set = principal_decomposition(data)
+p_set,n_set = window_creation(p_set),window_creation(n_set)
+
+p_set,n_set,labels = shuffle(p_set,n_set,labels,random_state=0)
+
+np.save("Attention_playground/p_set.npy", p_set)
+np.save("Attention_playground/n_set.npy", n_set)
+np.save("Attention_playground/labels.npy", labels)
+
+
 
 
 
