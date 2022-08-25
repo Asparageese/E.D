@@ -35,8 +35,8 @@ def window_creation(array):
     return np.array(windows)
 
 
-input_size = 20
-prediction_entropy = 4
+input_size = 30
+prediction_entropy = 2
 
 data = pd.read_csv("eurusd_minute.csv")
 data = np.diff(np.diff(data['BO'].to_numpy()))
