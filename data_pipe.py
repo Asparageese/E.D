@@ -37,7 +37,6 @@ def window_creation(array):
 
 input_size = 30
 prediction_entropy = 2
-
 data = pd.read_csv("eurusd_minute.csv")
 data = np.diff(np.diff(data['BO'].to_numpy()))
 data = scale(data,with_std=True)

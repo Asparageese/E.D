@@ -1,43 +1,28 @@
 from sklearn.utils import shuffle
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Input, Masking, GRU, Bidirectional, Dense, Flatten, GaussianDropout, LayerNormalization, Concatenate,BatchNormalization,AdditiveAttention
+from tensorflow.keras.layers import Input, Masking, Dense, Dropout, BatchNormalization, Concatenate
 
+class simp_enc(tf.keras.layers.Layer):
+    def __init__(self, out_dim, rate):
+        super(simp_enc, self).__init__()
+        self.out_dim = out_dim
+        self.rate = rate
 
-class BIG(tf.keras.layers.Layer):
-    def __init__(self, outputs):
-        super(BIG, self).__init__()
-        self.outputs = outputs
+        self.d1 = Dense(self.out_dim,activation="relu")
+        self.drop = Dropout(self.rate)
+        self.norm = BatchNormalization()
+        self.d2 = Dense(self.out_dim,activation="relu")
+        self.d3 = Dense(self.out_dim,activation="relu")
+    def call(self,inputs):
+        x = self.d1(inputs)
+        x = self.drop(x)
+        x = self.norm(x)
+        x = self.d2(x)
+        x = self.drop(x)
+        x = self.norm(x)
+        return self.d3(x)
 
-        self.qbig1 = Bidirectional(
-            GRU(self.outputs, return_sequences=True, activation="tanh", recurrent_activation="sigmoid",
-                recurrent_dropout=0.0, unroll=False, use_bias=True), merge_mode='concat')
-
-        self.drop1 = GaussianDropout(0.2)
-        self.norm1 = BatchNormalization()
-
-        self.vbig1 = Bidirectional(
-            GRU(self.outputs, return_sequences=True, activation="tanh", recurrent_activation="sigmoid",
-                recurrent_dropout=0.0, unroll=False, use_bias=True), merge_mode='concat')
-
-        self.att1 = AdditiveAttention()
-        self.norm1 = LayerNormalization()
-
-        self.bigo = Bidirectional(
-            GRU(self.outputs, activation="tanh", recurrent_activation="sigmoid", recurrent_dropout=0.0, unroll=False,
-                use_bias=True))
-
-        self.query = Dense(input_size, activation='relu')
-        self.value = Dense(prediction_entropy,activation='relu')
-
-    def call(self, inputs):
-        q = self.qbig1(inputs)
-        x = self.drop1(q)
-        x = self.norm1(x)
-        v = self.vbig1(x)
-        a = self.att1([q, v])
-        x = self.bigo(a)
-        return self.query(x), self.value(x)
 
 
 
@@ -47,11 +32,11 @@ epochs = 3
 prediction_entropy = 2
 
 ### import data
-p_data = np.load('p_set.npy')
-n_data = np.load('n_set.npy')
+p_data = np.load('p_multi.npy')
+n_data = np.load('n_multi.npy')
 labels = np.load('labels.npy')
 input_size = 30
-p_data, n_data = p_data[:,:,tf.newaxis], n_data[:,:,tf.newaxis]
+#p_data, n_data = p_data[:,:,tf.newaxis], n_data[:,:,tf.newaxis]
 
 p_data,n_data, labels = shuffle(p_data,n_data,labels,random_state=0)
 
@@ -60,15 +45,17 @@ input_layerB = Input(shape=(n_data.shape[1:]),name='in_n')
 maskA = Masking(mask_value=0.)(input_layerA)
 maskB = Masking(mask_value=0.)(input_layerB)
 
-pq,pv = BIG(32)(maskA)
-nq,nv = BIG(32)(maskB)
+pass1 = simp_enc(out_dim=input_size+25,rate=0.2)(maskA)
+pass2 = simp_enc(out_dim=input_size+25,rate=0.2)(maskB)
 
-att1 = AdditiveAttention()([pq,nq])
-att2 = AdditiveAttention()([pv,nv])
+conc = Concatenate()([pass1,pass2])
+flat = tf.keras.layers.Flatten()(conc)
 
-conc = Concatenate()([att1,att2])
 
-yhat = Dense(1,activation='softmax')(conc)
+poutpass = simp_enc(80,0.2)(flat)
+
+
+yhat = Dense(1,activation='softmax')(poutpass)
 model = tf.keras.Model(inputs=[input_layerA,input_layerB],outputs=[yhat],name='test_model')
 model.summary()
 
