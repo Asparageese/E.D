@@ -1,65 +1,76 @@
 from sklearn.utils import shuffle
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Input, Masking, Dense, Dropout, BatchNormalization, Concatenate
+from tensorflow.keras.layers import Input, Masking, Dense, Dropout, BatchNormalization, Flatten
 
-class simp_enc(tf.keras.layers.Layer):
+class fnn(tf.keras.layers.Layer):
+    def __init__(self,out_dim):
+        super(fnn, self).__init__()
+        self.out_dim = out_dim
+        self.d1 = Dense(self.out_dim,activation='tanh')
+        self.d2 = Dense(self.out_dim,activation='tanh')
+
+    def call(self, inputs):
+        x = self.d1(inputs)
+        return self.d2(x)
+
+class encoder_layer(tf.keras.layers.Layer):
+    def __init__(self,out_dim,rate):
+        super(encoder_layer, self).__init__()
+        self.out_dim = out_dim
+        self.rate = rate
+        self.fnn = fnn(self.out_dim)
+        self.drop = Dropout(self.rate)
+        self.norm = BatchNormalization()
+
+    def call(self, inputs):
+        x = self.fnn(inputs)
+        x = self.drop(x)
+        return self.norm(x)
+
+
+class encoder(tf.keras.layers.Layer):
     def __init__(self, out_dim, rate):
-        super(simp_enc, self).__init__()
+        super(encoder, self).__init__()
         self.out_dim = out_dim
         self.rate = rate
 
-        self.d1 = Dense(self.out_dim,activation="relu")
+        self.mask = Masking(mask_value=0.)
+        self.enc_layers = [encoder_layer(out_dim=self.out_dim,rate=self.rate) for _ in range(2)]
         self.drop = Dropout(self.rate)
-        self.norm = BatchNormalization()
-        self.d2 = Dense(self.out_dim,activation="relu")
-        self.d3 = Dense(self.out_dim,activation="relu")
-    def call(self,inputs):
-        x = self.d1(inputs)
-        x = self.drop(x)
-        x = self.norm(x)
-        x = self.d2(x)
-        x = self.drop(x)
-        x = self.norm(x)
-        return self.d3(x)
+    def call(self,pos,neg):
+        join = [pos,neg]
+        for i in range(2):
+            x = self.drop(join[i])
+            x = self.mask(x)
+            return self.enc_layers[i](x)
 
 
 
+batch_size = 32
+epochs = 6
 
-
-batch_size = 64
-epochs = 3
-prediction_entropy = 2
 
 ### import data
 p_data = np.load('p_multi.npy')
 n_data = np.load('n_multi.npy')
 labels = np.load('labels.npy')
-input_size = 30
+
 #p_data, n_data = p_data[:,:,tf.newaxis], n_data[:,:,tf.newaxis]
 
 p_data,n_data, labels = shuffle(p_data,n_data,labels,random_state=0)
 
-input_layerA = Input(shape=(p_data.shape[1:]),name='in_p')
-input_layerB = Input(shape=(n_data.shape[1:]),name='in_n')
-maskA = Masking(mask_value=0.)(input_layerA)
-maskB = Masking(mask_value=0.)(input_layerB)
+pos_layer = Input(shape=(p_data.shape[1:]))
+neg_layer = Input(shape=(n_data.shape[1:]))
 
-pass1 = simp_enc(out_dim=input_size+25,rate=0.2)(maskA)
-pass2 = simp_enc(out_dim=input_size+25,rate=0.2)(maskB)
+encoder_mechanisim = encoder(25,0.3)(pos_layer,neg_layer)
+flat = Flatten()(encoder_mechanisim)
 
-conc = Concatenate()([pass1,pass2])
-flat = tf.keras.layers.Flatten()(conc)
+y_hat = Dense(1,activation='softmax')(flat)
 
-
-poutpass = simp_enc(80,0.2)(flat)
-
-
-yhat = Dense(1,activation='softmax')(poutpass)
-model = tf.keras.Model(inputs=[input_layerA,input_layerB],outputs=[yhat],name='test_model')
+model = tf.keras.models.Model(inputs=[pos_layer,neg_layer],outputs=[y_hat],name='CPU_DNN_MASKING')
 model.summary()
 
-with tf.device('CPU:0'):
-    model.compile(loss=tf.keras.losses.BinaryFocalCrossentropy(),optimizer=tf.keras.optimizers.Nadam(),metrics=['accuracy'])
-with tf.device('GPU:0'):
-    model.fit({"in_p":p_data,"in_n":n_data},labels,batch_size=batch_size,epochs=epochs,shuffle=True,verbose=1,validation_split=0.3)
+model.compile(loss=tf.keras.losses.BinaryFocalCrossentropy(), optimizer=tf.keras.optimizers.Nadam(),metrics=['accuracy','mse','mae'])
+with tf.device('/GPU:0'):
+    model.fit([p_data,n_data],labels,epochs=epochs,batch_size=batch_size,shuffle=True,validation_split=0.3)
