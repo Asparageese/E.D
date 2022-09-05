@@ -7,8 +7,8 @@ class fnn(tf.keras.layers.Layer):
     def __init__(self,out_dim):
         super(fnn, self).__init__()
         self.out_dim = out_dim
-        self.d1 = Dense(self.out_dim,activation='tanh')
-        self.d2 = Dense(self.out_dim,activation='tanh')
+        self.d1 = Dense(self.out_dim,activation='relu')
+        self.d2 = Dense(self.out_dim,activation='relu')
 
     def call(self, inputs):
         x = self.d1(inputs)
@@ -41,14 +41,14 @@ class encoder(tf.keras.layers.Layer):
     def call(self,pos,neg):
         join = [pos,neg]
         for i in range(2):
-            x = self.drop(join[i])
-            x = self.mask(x)
+            x = self.mask(join[i])
+            x = self.drop(x)
             return self.enc_layers[i](x)
 
 
 
 batch_size = 32
-epochs = 6
+epochs = 4
 
 
 ### import data
@@ -68,9 +68,11 @@ flat = Flatten()(encoder_mechanisim)
 
 y_hat = Dense(1,activation='softmax')(flat)
 
-model = tf.keras.models.Model(inputs=[pos_layer,neg_layer],outputs=[y_hat],name='CPU_DNN_MASKING')
+model = tf.keras.models.Model(inputs=[pos_layer,neg_layer],outputs=[y_hat],name='DNN_MASKING')
 model.summary()
 
+callback = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=2)
+
 model.compile(loss=tf.keras.losses.BinaryFocalCrossentropy(), optimizer=tf.keras.optimizers.Nadam(),metrics=['accuracy','mse','mae'])
-with tf.device('/GPU:0'):
-    model.fit([p_data,n_data],labels,epochs=epochs,batch_size=batch_size,shuffle=True,validation_split=0.3)
+with tf.device('/CPU:0'):
+    model.fit([p_data,n_data],labels,epochs=epochs,batch_size=batch_size,shuffle=True,validation_split=0.3,callbacks=[callback])
